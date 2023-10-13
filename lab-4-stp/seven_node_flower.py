@@ -39,11 +39,23 @@ class RingTopo(Topo):
         b2 = self.addHost('b2')
         b3 = self.addHost('b3')
         b4 = self.addHost('b4')
+        b5 = self.addHost('b5')
+        b6 = self.addHost('b6')
+        b7 = self.addHost('b7')
 
         self.addLink(b1, b2)
         self.addLink(b1, b3)
         self.addLink(b2, b4)
         self.addLink(b3, b4)
+        self.addLink(b4, b5)
+        self.addLink(b5, b6)
+        self.addLink(b6, b1)
+        self.addLink(b7, b1)
+        self.addLink(b7, b2)
+        self.addLink(b7, b3)
+        self.addLink(b7, b4)
+        self.addLink(b7, b5)
+        self.addLink(b7, b6)
 
 if __name__ == '__main__':
     check_scripts()
@@ -67,17 +79,17 @@ if __name__ == '__main__':
 
 
     net.start()
-    for idx in range(4):
+    for idx in range(7):
         name = 'b' + str(idx+1)
         node = net.get(name)
         node.cmd('./stp > %s-output.txt 2>&1 &' % name)
         node.cmd('./stp-reference > %s-output-ref.txt 2>&1 &' % name)
         print("Started stp on %s" % name)
     # sleep for 45 seconds
-    os.system('sleep 45')
+    os.system('sleep 90')
     # for all the hosts, kill the stp process
     print("Killing stp on all hosts")
-    for idx in range(4):
+    for idx in range(7):
         name = 'b' + str(idx+1)
         node = net.get(name)
         node.cmd('pkill -SIGTERM stp')
@@ -85,4 +97,4 @@ if __name__ == '__main__':
     net.stop()
 
 # run command "./dump_output.sh 4" to get the output
-os.system('./dump_output.sh 4')
+os.system('./dump_output.sh 7')

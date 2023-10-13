@@ -20,8 +20,12 @@ $(OBJS) : %.o : %.c include/*.h
 $(TARGET): $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $(TARGET) $(LIBS) 
 
+compress:
+	7z a stp.zip *.c *.h include/*.h Makefile
+
 clean:
 	rm -f *.o $(TARGET)
+	rm *.txt
 
 tags: *.c include/*.h
 	ctags *.c include/*.h

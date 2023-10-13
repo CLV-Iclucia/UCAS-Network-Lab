@@ -1,0 +1,62 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-Wall",
+      "-Iinclude",
+      "-o",
+      "stp.o",
+      "stp.c"
+    ],
+    "directory": "/home/creeper/ucas-network/lab-4-stp",
+    "file": "/home/creeper/ucas-network/lab-4-stp/stp.c",
+    "output": "/home/creeper/ucas-network/lab-4-stp/stp.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-Wall",
+      "-Iinclude",
+      "-o",
+      "stp_timer.o",
+      "stp_timer.c"
+    ],
+    "directory": "/home/creeper/ucas-network/lab-4-stp",
+    "file": "/home/creeper/ucas-network/lab-4-stp/stp_timer.c",
+    "output": "/home/creeper/ucas-network/lab-4-stp/stp_timer.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-Wall",
+      "-Iinclude",
+      "-o",
+      "main.o",
+      "main.c"
+    ],
+    "directory": "/home/creeper/ucas-network/lab-4-stp",
+    "file": "/home/creeper/ucas-network/lab-4-stp/main.c",
+    "output": "/home/creeper/ucas-network/lab-4-stp/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-g",
+      "-Wall",
+      "-Iinclude",
+      "-o",
+      "device_internal.o",
+      "device_internal.c"
+    ],
+    "directory": "/home/creeper/ucas-network/lab-4-stp",
+    "file": "/home/creeper/ucas-network/lab-4-stp/device_internal.c",
+    "output": "/home/creeper/ucas-network/lab-4-stp/device_internal.o"
+  }
+]
