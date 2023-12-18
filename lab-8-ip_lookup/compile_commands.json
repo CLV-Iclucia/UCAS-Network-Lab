@@ -1,0 +1,47 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-g",
+      "-I./include",
+      "-o",
+      "ip_trie_tree",
+      "tree.c"
+    ],
+    "directory": "/home/creeper/ucas-network/lab-8-ip_lookup",
+    "file": "/home/creeper/ucas-network/lab-8-ip_lookup/tree.c",
+    "output": "/home/creeper/ucas-network/lab-8-ip_lookup/ip_trie_tree"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-g",
+      "-I./include",
+      "-o",
+      "ip_trie_tree",
+      "util.c"
+    ],
+    "directory": "/home/creeper/ucas-network/lab-8-ip_lookup",
+    "file": "/home/creeper/ucas-network/lab-8-ip_lookup/util.c",
+    "output": "/home/creeper/ucas-network/lab-8-ip_lookup/ip_trie_tree"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-g",
+      "-I./include",
+      "-o",
+      "ip_trie_tree",
+      "main.c"
+    ],
+    "directory": "/home/creeper/ucas-network/lab-8-ip_lookup",
+    "file": "/home/creeper/ucas-network/lab-8-ip_lookup/main.c",
+    "output": "/home/creeper/ucas-network/lab-8-ip_lookup/ip_trie_tree"
+  }
+]
