@@ -61,6 +61,6 @@ if __name__ == '__main__':
 #    h2.cmd('python3 ./tcp_stack_trans.py client 10.0.0.1 10001 &')
 
     net.start()
-    time.sleep(10)
+    time.sleep(15)
     #CLI(net)
     net.stop()

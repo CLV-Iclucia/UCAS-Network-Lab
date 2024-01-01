@@ -9,7 +9,7 @@ from mininet.node import OVSBridge
 from mininet.net import Mininet
 from mininet.cli import CLI
 from mininet.link import TCLink
-
+import time
 script_deps = [ 'ethtool', 'arptables', 'iptables' ]
 
 def check_scripts():
@@ -71,5 +71,5 @@ if __name__ == '__main__':
     h2.cmd('./tcp_stack client 10.0.0.1 10001 2> client_log.txt &')
 
     net.start()
-    CLI(net)
+    time.sleep(15)
     net.stop()

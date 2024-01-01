@@ -44,7 +44,10 @@ static void handle_retrans_timeout(struct tcp_sock *tsk) {
     } else
       break;
   }
-  if (list_empty(&tsk->send_buf)) return;
+  if (list_empty(&tsk->send_buf)) {
+    pthread_mutex_unlock(&tsk->send_lock);
+    return;
+  }
   // run through the send buffer, and retransmit all the packets in it
   struct pending_packet *pos =
       list_entry(tsk->send_buf.next, struct pending_packet, list);

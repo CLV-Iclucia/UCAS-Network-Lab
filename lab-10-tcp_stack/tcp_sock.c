@@ -55,11 +55,13 @@ struct tcp_sock* alloc_tcp_sock() {
   init_list_head(&tsk->listen_queue);
   init_list_head(&tsk->accept_queue);
   init_list_head(&tsk->send_buf);
+  init_list_head(&tsk->rcv_ofo_buf);
+
   tsk->rcv_buf = alloc_ring_buffer(tsk->rcv_wnd);
-  tsk->wait_connect = alloc_wait_struct();
-  tsk->wait_accept = alloc_wait_struct();
-  tsk->wait_recv = alloc_wait_struct();
-  tsk->wait_send = alloc_wait_struct();
+  tsk->wait_connect = alloc_wait_struct("connect");
+  tsk->wait_accept = alloc_wait_struct("accept");
+  tsk->wait_recv = alloc_wait_struct("recv");
+  tsk->wait_send = alloc_wait_struct("send");
   tsk->snd_nxt = tcp_new_iss();
   return tsk;
 }
@@ -338,7 +340,6 @@ int tcp_sock_read(struct tcp_sock* tsk, char* buf, int len) {
     if (tsk->state == TCP_CLOSED) return -1;
   }
   pthread_mutex_lock(&tsk->rcv_buf->lock);
-  log(DEBUG, "wake up from recv");
   if (tsk->state == TCP_CLOSE_WAIT && ring_buffer_empty(tsk->rcv_buf)) {
     pthread_mutex_unlock(&tsk->rcv_buf->lock);
     return 0;

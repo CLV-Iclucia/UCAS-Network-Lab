@@ -92,6 +92,8 @@ static void ack_ofo_packets(struct tcp_sock* tsk) {
         list_entry(tsk->rcv_ofo_buf.next, struct tcp_ofo_packet, list);
     if (ofo_packet_iter->cb.seq > tsk->rcv_nxt) break;
     if (ofo_packet_iter->cb.seq_end >= tsk->rcv_nxt) {
+      log(DEBUG, "ack ofo packet, seq: %d, ack: %d", ofo_packet_iter->cb.seq,
+          ofo_packet_iter->cb.ack);
       ack_data_packet(tsk, &ofo_packet_iter->cb, ofo_packet_iter->packet);
       tcp_set_retrans_timer(tsk);
     }
@@ -198,11 +200,12 @@ static void tcp_handle_ack(struct tcp_sock* tsk, struct tcp_cb* cb,
 static void tcp_handle_syn(struct tcp_sock* tsk, struct tcp_cb* cb,
                            char* packet) {
   assert(cb->flags & TCP_SYN);
+  log(DEBUG, "%d", tsk->rcv_nxt);
   if (tsk->state == TCP_LISTEN) {
     struct tcp_sock* csk = tcp_sock_lookup(cb);
     if (csk != tsk) {
       retrans_packet(csk);
-      return ;
+      return;
     }
     csk = alloc_tcp_sock();
     csk->sk_sip = cb->daddr;
@@ -221,7 +224,7 @@ static void tcp_handle_syn(struct tcp_sock* tsk, struct tcp_cb* cb,
     tcp_hash(csk);
     tcp_send_control_packet(csk, TCP_SYN | TCP_ACK, true);
     list_add_tail(&csk->list, &tsk->listen_queue);
-    return ;
+    return;
   }
   if (less_than_32b(cb->seq, tsk->rcv_nxt)) {
     if (tsk->state == TCP_ESTABLISHED) {
@@ -241,7 +244,7 @@ static void tcp_handle_syn(struct tcp_sock* tsk, struct tcp_cb* cb,
 static void tcp_handle_fin(struct tcp_sock* tsk, struct tcp_cb* cb,
                            char* packet) {
   assert(cb->flags & TCP_FIN);
-  if (less_than_32b(cb->seq, tsk->rcv_nxt)) {
+  if (less_than_32b(cb->seq, tsk->rcv_nxt) && !(cb->flags & TCP_ACK)) {
     retrans_packet(tsk);
     if (tsk->state == TCP_CLOSE_WAIT) {
       wake_up(tsk->wait_connect);
@@ -249,7 +252,7 @@ static void tcp_handle_fin(struct tcp_sock* tsk, struct tcp_cb* cb,
       wake_up(tsk->wait_send);
       wake_up(tsk->wait_accept);
     }
-    return ;
+    return;
   }
   if (tsk->state == TCP_ESTABLISHED) {
     tsk->rcv_nxt = cb->seq_end;
