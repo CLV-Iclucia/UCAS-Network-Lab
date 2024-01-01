@@ -77,7 +77,7 @@ struct tcp_sock {
   struct list_head send_buf;
   // used to pend out-of-order packets
   struct list_head rcv_ofo_buf;
-
+  pthread_mutex_t send_lock;
   // tcp state, see enum tcp_state in tcp.h
   int state;
 
@@ -119,8 +119,71 @@ struct tcp_ofo_packet {
 struct pending_packet {
   struct list_head list;
   char *packet;
-  int seq, seq_end;
+  bool is_data_pack;
+  int retrans_times;
+  int seq, seq_end, len;
 };
+
+
+// initialize tcp header according to the arguments
+static inline void tcp_init_hdr(struct tcphdr *tcp, u16 sport, u16 dport, u32 seq,
+                         u32 ack, u8 flags, u16 rwnd) {
+  memset((char *)tcp, 0, TCP_BASE_HDR_SIZE);
+
+  tcp->sport = htons(sport);
+  tcp->dport = htons(dport);
+  tcp->seq = htonl(seq);
+  tcp->ack = htonl(ack);
+  tcp->off = TCP_HDR_OFFSET;
+  tcp->flags = flags;
+  tcp->rwnd = htons(rwnd);
+}
+
+static inline struct pending_packet *alloc_pending_packet(char *packet, int seq,
+                                                   int seq_end) {
+  struct pending_packet *pp = malloc(sizeof(struct pending_packet));
+  pp->packet = packet;
+  pp->seq = seq;
+  pp->seq_end = seq_end;
+  pp->retrans_times = 0;
+  pp->list.next = pp->list.prev = &pp->list;
+  return pp;
+}
+
+static inline void insert_data_send_buffer(struct tcp_sock *tsk, char *packet,
+                                            int len) {
+  pthread_mutex_lock(&tsk->send_lock);
+  struct pending_packet *pp = malloc(sizeof(struct pending_packet));
+  int packet_len = len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
+  assert(len);
+  pp->len = len;
+  pp->packet = malloc(packet_len);
+  memcpy(pp->packet, packet, packet_len);
+  pp->is_data_pack = true;
+  pp->retrans_times = 0;
+  struct tcphdr *tcp = packet_to_tcp_hdr(packet);
+  pp->seq = ntohl(tcp->seq);
+  pp->seq_end = pp->seq + len + ((tcp->flags & (TCP_SYN | TCP_FIN)) ? 1 : 0);
+  pp->list.next = pp->list.prev = &pp->list;
+  list_add_tail(&pp->list, &tsk->send_buf);
+  pthread_mutex_unlock(&tsk->send_lock);
+}
+
+static inline void insert_control_send_buffer(struct tcp_sock* tsk, char *packet, int packet_len) {
+  pthread_mutex_lock(&tsk->send_lock);
+  struct pending_packet *pp = malloc(sizeof(struct pending_packet));
+  pp->packet = malloc(packet_len);
+  pp->list.next = pp->list.prev = &pp->list;
+  memcpy(pp->packet, packet, packet_len);
+  pp->is_data_pack = false;
+  pp->retrans_times = 0;
+  struct tcphdr *tcp = packet_to_tcp_hdr(packet);
+  pp->seq = ntohl(tcp->seq);
+  pp->seq_end = pp->seq + ((tcp->flags & (TCP_SYN | TCP_FIN)) ? 1 : 0);
+  list_add_tail(&pp->list, &tsk->send_buf);
+  log(DEBUG, "add packet to buffer, seq = %d, seq_end = %d", pp->seq, pp->seq_end);
+  pthread_mutex_unlock(&tsk->send_lock);
+}
 
 void tcp_set_state(struct tcp_sock *tsk, int state);
 
@@ -139,8 +202,9 @@ u32 tcp_new_iss();
 
 void tcp_send_reset(struct tcp_cb *cb);
 
-void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags);
-void tcp_send_packet(struct tcp_sock *tsk, char *packet, int len);
+void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags, bool prep_for_retrans);
+void tcp_send_packet(struct tcp_sock *tsk, char *packet, int len,
+                     bool initial_trans);
 // seq = snd_nxt, ack = rcv_nxt, rwnd = rcv_wnd
 int tcp_send_data(struct tcp_sock *tsk, char *buf, int len);
 
@@ -157,4 +221,20 @@ void tcp_sock_close(struct tcp_sock *tsk);
 int tcp_sock_read(struct tcp_sock *tsk, char *buf, int len);
 int tcp_sock_write(struct tcp_sock *tsk, char *buf, int len);
 
+// retrans the first packet of tsk->send_buf
+static inline void retrans_packet(struct tcp_sock* tsk) {
+  pthread_mutex_lock(&tsk->send_lock);
+  assert(!list_empty(&tsk->send_buf));
+  if (list_empty(&tsk->send_buf)) {
+    pthread_mutex_unlock(&tsk->send_lock);
+    return;
+  }
+  struct pending_packet* pos =
+      list_entry(tsk->send_buf.next, struct pending_packet, list);
+  char* packet = pos->packet;
+  int packet_len = pos->len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE +
+                   TCP_BASE_HDR_SIZE;
+  ip_send_packet(packet, packet_len);
+  pthread_mutex_unlock(&tsk->send_lock);
+}
 #endif

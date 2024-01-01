@@ -54,7 +54,7 @@ struct tcp_sock* alloc_tcp_sock() {
   init_list_head(&tsk->list);
   init_list_head(&tsk->listen_queue);
   init_list_head(&tsk->accept_queue);
-
+  init_list_head(&tsk->send_buf);
   tsk->rcv_buf = alloc_ring_buffer(tsk->rcv_wnd);
   tsk->wait_connect = alloc_wait_struct();
   tsk->wait_accept = alloc_wait_struct();
@@ -242,14 +242,13 @@ int tcp_sock_connect(struct tcp_sock* tsk, struct sock_addr* skaddr) {
   // SYN packet by sleep on wait_connect
   tcp_set_state(tsk, TCP_SYN_SENT);
   tcp_hash(tsk);
-  tcp_send_control_packet(tsk, TCP_SYN);
+  tcp_send_control_packet(tsk, TCP_SYN, true);
   sleep_on(tsk->wait_connect);
   // if the SYN packet of the peer arrives, this function is notified, which
   // means the connection is established
   if (tsk->state == TCP_ESTABLISHED)
     return 0;
-  else
-    return -1;
+  return -1;
 }
 
 // set backlog (the maximum number of pending connection requst), switch the
@@ -306,15 +305,15 @@ void tcp_sock_close(struct tcp_sock* tsk) {
   log(DEBUG, "closing tcp sock.");
   switch (tsk->state) {
     case TCP_ESTABLISHED:
-      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK);
+      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK, true);
       tcp_set_state(tsk, TCP_FIN_WAIT_1);
       break;
     case TCP_CLOSE_WAIT:
-      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK);
+      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK, true);
       tcp_set_state(tsk, TCP_LAST_ACK);
       break;
     case TCP_SYN_RECV:
-      tcp_send_control_packet(tsk, TCP_RST);
+      tcp_send_control_packet(tsk, TCP_RST, false);
       tcp_set_state(tsk, TCP_CLOSED);
       wake_up(tsk->wait_connect);
       wake_up(tsk->wait_recv);
@@ -336,6 +335,7 @@ int tcp_sock_read(struct tcp_sock* tsk, char* buf, int len) {
   while (is_buffer_empty(tsk->rcv_buf) && tsk->state == TCP_ESTABLISHED) {
     log(DEBUG, "sleep on recv");
     sleep_on(tsk->wait_recv);
+    if (tsk->state == TCP_CLOSED) return -1;
   }
   pthread_mutex_lock(&tsk->rcv_buf->lock);
   log(DEBUG, "wake up from recv");
@@ -347,7 +347,7 @@ int tcp_sock_read(struct tcp_sock* tsk, char* buf, int len) {
   log(DEBUG, "read %d bytes from ring buffer", newly_read_len);
   read_len += newly_read_len;
   tsk->rcv_wnd = ring_buffer_free(tsk->rcv_buf);
-  tcp_send_control_packet(tsk, TCP_ACK);
+  tcp_send_control_packet(tsk, TCP_ACK, true);
   pthread_mutex_unlock(&tsk->rcv_buf->lock);
   return read_len;
 }
@@ -357,9 +357,10 @@ int tcp_sock_read(struct tcp_sock* tsk, char* buf, int len) {
 int tcp_sock_write(struct tcp_sock* tsk, char* buf, int len) {
   int sent_len = 0;
   while (sent_len < len) {
-    while (tsk->snd_wnd == 0 && tsk->state == TCP_ESTABLISHED)
+    while (tsk->snd_wnd == 0 && tsk->state == TCP_ESTABLISHED) {
       sleep_on(tsk->wait_send);
-    if (tsk->state == TCP_CLOSED) return -1;
+      if (tsk->state == TCP_CLOSED) return -1;
+    }
     int send_len = min(tsk->snd_una + tsk->snd_wnd - tsk->snd_nxt, len - sent_len);
     send_len = min(
         send_len, 1514 - ETHER_HDR_SIZE - IP_BASE_HDR_SIZE - TCP_BASE_HDR_SIZE);
@@ -371,7 +372,7 @@ int tcp_sock_write(struct tcp_sock* tsk, char* buf, int len) {
     memcpy(data, buf + sent_len, send_len);
     tcp_send_packet(
         tsk, packet_buf,
-        send_len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE);
+        send_len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE, true);
     sent_len += send_len;
   }
   return len;

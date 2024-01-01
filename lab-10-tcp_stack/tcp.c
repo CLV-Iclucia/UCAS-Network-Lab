@@ -14,8 +14,8 @@ const char *tcp_state_str[] = {
 
 // assign an initial sending sequence number for a new tcp sock
 u32 tcp_new_iss() {
-//  return 0;
-  return (u32)rand();
+  return 0;
+//  return (u32)rand();
 }
 
 static int copy_flag_str(u8 flags, int flag, char *buf, int start,

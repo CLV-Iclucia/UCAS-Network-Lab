@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdlib.h>
+#include "log.h"
 
 struct synch_wait {
 	pthread_mutex_t lock;		// mutex lock
@@ -40,6 +41,7 @@ unlock:
 static inline int sleep_on(struct synch_wait *wait)
 {
 	pthread_mutex_lock(&wait->lock);
+        log(DEBUG, "sleep on");
 	if (wait->dead)
 		goto unlock;
 	wait->sleep = 1;
@@ -57,6 +59,7 @@ unlock:
 static inline int wake_up(struct synch_wait *wait)
 {
 	pthread_mutex_lock(&wait->lock);
+        log(DEBUG, "wake up");
 	if (wait->dead)
 		goto unlock;
 

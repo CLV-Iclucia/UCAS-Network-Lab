@@ -14,7 +14,6 @@
 
 void handle_packet(iface_info_t *iface, char *packet, int len) {
   struct ether_header *eh = (struct ether_header *)packet;
-
   switch (ntohs(eh->ether_type)) {
     case ETH_P_IP:
       handle_ip_packet(iface, packet, len);

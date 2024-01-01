@@ -8,6 +8,7 @@
 struct tcp_timer {
 	int type;	// time-wait: 0		retrans: 1
 	int timeout;	// in micro second
+        int retrans_times;
 	struct list_head list;
 	int enable;
 };
@@ -29,7 +30,7 @@ void *tcp_timer_thread(void *arg);
 void tcp_set_timewait_timer(struct tcp_sock *);
 
 void tcp_set_retrans_timer(struct tcp_sock *tsk);
-
+void tcp_reset_retrans_timer(struct tcp_sock *tsk);
 void tcp_unset_retrans_timer(struct tcp_sock *tsk);
 
 #endif

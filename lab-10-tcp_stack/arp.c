@@ -91,14 +91,14 @@ void iface_send_packet_by_arp(iface_info_t *iface, u32 dst_ip, char *packet,
   u8 dst_mac[ETH_ALEN];
   int found = arpcache_lookup(dst_ip, dst_mac);
   if (found) {
-    log(DEBUG, "found mac for " IP_FMT " in arpcache, send packet",
-        LE_IP_FMT_STR(dst_ip));
+    // log(DEBUG, "found mac for " IP_FMT " in arpcache, send packet",
+    //     LE_IP_FMT_STR(dst_ip));
     memcpy(eh->ether_shost, iface->mac, ETH_ALEN);
     memcpy(eh->ether_dhost, dst_mac, ETH_ALEN);
     iface_send_packet(iface, packet, len);
   } else {
-    log(DEBUG, "not found mac for " IP_FMT " in arpcache, pending packet",
-        LE_IP_FMT_STR(dst_ip));
+    // log(DEBUG, "not found mac for " IP_FMT " in arpcache, pending packet",
+    //     LE_IP_FMT_STR(dst_ip));
     arpcache_append_packet(iface, dst_ip, packet, len);
     arp_send_request(iface, dst_ip);
   }
