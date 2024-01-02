@@ -66,7 +66,9 @@ void handle_arp_packet(iface_info_t *iface, char *packet, int len) {
       arp_send_reply(iface, arp_hdr);
       return;
     }
-    log(DEBUG, "received arp packet not for me");
+    u32 dst_ip = ntohl(arp_hdr->arp_tpa);
+    log(DEBUG, "received arp packet not for me, tpa is "IP_FMT", my ip is "IP_FMT,
+        HOST_IP_FMT_STR(dst_ip), HOST_IP_FMT_STR(iface->ip));
   } else if (ntohs(arp_hdr->arp_op) == ARPOP_REPLY) {
     log(DEBUG, "received arp reply from" IP_FMT ", caching it",
         NET_IP_FMT_STR(arp_hdr->arp_spa));

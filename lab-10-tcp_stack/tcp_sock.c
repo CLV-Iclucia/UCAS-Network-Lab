@@ -62,6 +62,7 @@ struct tcp_sock* alloc_tcp_sock() {
   tsk->wait_accept = alloc_wait_struct("accept");
   tsk->wait_recv = alloc_wait_struct("recv");
   tsk->wait_send = alloc_wait_struct("send");
+  tsk->retrans_timer.type = 1;
   tsk->snd_nxt = tcp_new_iss();
   return tsk;
 }
@@ -244,7 +245,7 @@ int tcp_sock_connect(struct tcp_sock* tsk, struct sock_addr* skaddr) {
   // SYN packet by sleep on wait_connect
   tcp_set_state(tsk, TCP_SYN_SENT);
   tcp_hash(tsk);
-  tcp_send_control_packet(tsk, TCP_SYN, true);
+  tcp_send_control_packet(tsk, TCP_SYN);
   sleep_on(tsk->wait_connect);
   // if the SYN packet of the peer arrives, this function is notified, which
   // means the connection is established
@@ -307,15 +308,15 @@ void tcp_sock_close(struct tcp_sock* tsk) {
   log(DEBUG, "closing tcp sock.");
   switch (tsk->state) {
     case TCP_ESTABLISHED:
-      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK, true);
+      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK);
       tcp_set_state(tsk, TCP_FIN_WAIT_1);
       break;
     case TCP_CLOSE_WAIT:
-      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK, true);
+      tcp_send_control_packet(tsk, TCP_FIN | TCP_ACK);
       tcp_set_state(tsk, TCP_LAST_ACK);
       break;
     case TCP_SYN_RECV:
-      tcp_send_control_packet(tsk, TCP_RST, false);
+      tcp_send_control_packet(tsk, TCP_RST);
       tcp_set_state(tsk, TCP_CLOSED);
       wake_up(tsk->wait_connect);
       wake_up(tsk->wait_recv);
@@ -348,7 +349,7 @@ int tcp_sock_read(struct tcp_sock* tsk, char* buf, int len) {
   log(DEBUG, "read %d bytes from ring buffer", newly_read_len);
   read_len += newly_read_len;
   tsk->rcv_wnd = ring_buffer_free(tsk->rcv_buf);
-  tcp_send_control_packet(tsk, TCP_ACK, true);
+  tcp_send_control_packet(tsk, TCP_ACK);
   pthread_mutex_unlock(&tsk->rcv_buf->lock);
   return read_len;
 }

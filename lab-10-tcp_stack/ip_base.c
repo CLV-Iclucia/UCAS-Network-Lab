@@ -53,5 +53,6 @@ void ip_send_packet(char *packet, int len) {
   memcpy(eh->ether_shost, iface->mac, ETH_ALEN);
   ip->saddr = htonl(iface->ip);
   ip->checksum = ip_checksum(ip);
+  u32 dst_ip = ntohl(ip->daddr);
   iface_send_packet_by_arp(iface, ntohl(ip->daddr), packet, len);
 }

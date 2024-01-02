@@ -38,11 +38,10 @@ void tcp_send_packet(struct tcp_sock *tsk, char *packet, int len,
   log(DEBUG, "send packet, flags: %s, seq: %d, ack: %d, len: %d",
       tcp_flags_str(tcp->flags), seq, ack, tcp_data_len);
   if (prep_for_retrans) {
-    insert_data_send_buffer(tsk, packet, len);
+    insert_data_send_buffer(tsk, packet, tcp_data_len);
     tsk->snd_nxt += tcp_data_len;
     tcp_set_retrans_timer(tsk);
   }
-
   ip_send_packet(packet, len);
 }
 
@@ -52,8 +51,8 @@ void tcp_send_packet(struct tcp_sock *tsk, char *packet, int len,
 // All these packets do not have payload and the only difference among these is
 // the flags.
 // seq = snd_nxt, ack = rcv_nxt, rwnd = rcv_wnd
-void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags,
-                             bool prep_for_retrans) {
+void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags) {
+  assert(tsk->retrans_timer.type == 1);
   int pkt_size = ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
   char *packet = malloc(pkt_size);
   if (!packet) {
@@ -72,9 +71,9 @@ void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags,
   tcp->checksum = tcp_checksum(ip, tcp);
   log(DEBUG, "send control packet, flags: %s, seq: %d, ack: %d, rwnd: %d",
       tcp_flags_str(flags), tsk->snd_nxt, tsk->rcv_nxt, tsk->rcv_wnd);
-  if (prep_for_retrans) {
+  if (flags & (TCP_SYN | TCP_FIN)) {
     insert_control_send_buffer(tsk, packet, pkt_size);
-    if (flags & (TCP_SYN | TCP_FIN)) tsk->snd_nxt += 1;
+    tsk->snd_nxt += 1;
     tcp_set_retrans_timer(tsk);
   }
   ip_send_packet(packet, pkt_size);

@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <string.h>
 
-// #define LOG_DEBUG
+#define LOG_DEBUG
 
 enum log_level { DEBUG = 0, INFO, WARNING, ERROR };
 

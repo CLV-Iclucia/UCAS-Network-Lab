@@ -202,7 +202,7 @@ u32 tcp_new_iss();
 
 void tcp_send_reset(struct tcp_cb *cb);
 
-void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags, bool prep_for_retrans);
+void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags);
 void tcp_send_packet(struct tcp_sock *tsk, char *packet, int len,
                      bool initial_trans);
 // seq = snd_nxt, ack = rcv_nxt, rwnd = rcv_wnd
