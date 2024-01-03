@@ -84,7 +84,7 @@ void *tcp_client(void *arg) {
       exit(EXIT_FAILURE);
     }
     tcp_sock_write(tsk, buffer, valread);
-    sleep(1);
+    // sleep(1);
   }
   fclose(fp);
   tcp_sock_close(tsk);

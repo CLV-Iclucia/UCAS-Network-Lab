@@ -145,6 +145,19 @@ void tcp_set_retrans_timer(struct tcp_sock *tsk) {
   pthread_mutex_unlock(&timer_lock);
 }
 
+void tcp_try_update_retrans_timer(struct tcp_sock *tsk) {
+  pthread_mutex_lock(&timer_lock);
+  struct tcp_timer *retrans_timer = &tsk->retrans_timer;
+  assert(retrans_timer->type == 1);
+  if (retrans_timer->enable == 0) {
+    pthread_mutex_unlock(&timer_lock);
+    return;
+  }
+  log(DEBUG, "try update retrans timer");
+  retrans_timer->timeout = TCP_RETRANS_INTERVAL_INITIAL;
+  pthread_mutex_unlock(&timer_lock);
+}
+
 void tcp_reset_retrans_timer(struct tcp_sock *tsk) {
   pthread_mutex_lock(&timer_lock);
   struct tcp_timer *retrans_timer = &tsk->retrans_timer;

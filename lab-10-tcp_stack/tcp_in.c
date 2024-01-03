@@ -64,6 +64,15 @@ static void insert_ofo_packet(struct tcp_ofo_packet *ofo_packet,
   list_add_tail(&ofo_packet->list, pending_queue);
 }
 
+static void prepare_for_close(struct tcp_sock *tsk) {
+  tcp_unset_retrans_timer(tsk);
+  tcp_send_control_packet(tsk, TCP_ACK);
+  tcp_set_state(tsk, TCP_CLOSE_WAIT);
+  wake_up(tsk->wait_recv);
+  wake_up(tsk->wait_send);
+  wake_up(tsk->wait_accept);
+}
+
 static void ack_data_packet(struct tcp_sock *tsk, struct tcp_cb *cb,
                             char *packet) {
   char *data = packet + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
@@ -76,9 +85,13 @@ static void ack_data_packet(struct tcp_sock *tsk, struct tcp_cb *cb,
     return;
   }
   tcp_update_window_safe(tsk, cb);
-
+  tcp_try_update_retrans_timer(tsk);
   int offset = tsk->rcv_nxt - cb->seq;
   data_len -= offset;
+  if (cb->flags & TCP_FIN) {
+    prepare_for_close(tsk);
+    return;
+  }
   if (data_len > 0) {
     pthread_mutex_lock(&tsk->rcv_buf->lock);
     log(DEBUG, "write data to rcv_buf, offset: %d, data_len: %d", offset,
@@ -163,7 +176,8 @@ static void tcp_handle_ack(struct tcp_sock *tsk, struct tcp_cb *cb,
       tcp_update_window(tsk, cb);
     } else
       log(ERROR, "received unexpected packet, drop it.");
-  } else if (tsk->state == TCP_ESTABLISHED) {
+  } else if (tsk->state == TCP_ESTABLISHED || tsk->state == TCP_FIN_WAIT_1 ||
+             tsk->state == TCP_FIN_WAIT_2) {
     if (less_than_32b(cb->seq_end, tsk->rcv_nxt)) {
       log(DEBUG, "receive outdated packet, send ack.");
       tcp_send_control_packet(tsk, TCP_ACK);
@@ -179,22 +193,17 @@ static void tcp_handle_ack(struct tcp_sock *tsk, struct tcp_cb *cb,
       tsk->snd_una = cb->ack;
       ack_data_packet(tsk, cb, packet);
       ack_ofo_packets(tsk);
+      if (tsk->state == TCP_FIN_WAIT_1 && cb->ack == tsk->rcv_nxt) {
+        tcp_set_state(tsk, TCP_FIN_WAIT_2);
+      }
+      if (tsk->state == TCP_FIN_WAIT_2 && cb->ack == tsk->rcv_nxt) {
+        tcp_update_window_safe(tsk, cb);
+        tsk->rcv_nxt = cb->seq_end;
+        wake_up(tsk->wait_send);
+      }
     } else {
       pend_ofo_packet(tsk, cb, packet);
     }
-  } else if (tsk->state == TCP_FIN_WAIT_1) {
-    if (cb->ack == tsk->snd_nxt) {
-      tsk->snd_una = cb->ack;
-      tcp_set_state(tsk, TCP_FIN_WAIT_2);
-    } else
-      log(ERROR, "received unexpected packet, drop it.");
-  } else if (tsk->state == TCP_FIN_WAIT_2) {
-    if (is_tcp_seq_valid(tsk, cb)) {
-      tcp_update_window_safe(tsk, cb);
-      tsk->rcv_nxt = cb->seq_end;
-      wake_up(tsk->wait_send);
-    } else
-      log(ERROR, "received packet with invalid seq, drop it.");
   } else if (tsk->state == TCP_LAST_ACK) {
     if (cb->ack == tsk->snd_nxt) {
       tsk->snd_una = cb->ack;
@@ -275,6 +284,8 @@ static void tcp_handle_fin(struct tcp_sock *tsk, struct tcp_cb *cb,
   }
   if (tsk->state == TCP_ESTABLISHED) {
     if (!is_tcp_seq_valid(tsk, cb))
+      return;
+    if (less_than_32b(tsk->rcv_nxt, cb->seq))
       return;
     tsk->rcv_nxt = cb->seq_end;
     tcp_send_control_packet(tsk, TCP_ACK);

@@ -336,7 +336,6 @@ void tcp_sock_close(struct tcp_sock* tsk) {
 int tcp_sock_read(struct tcp_sock* tsk, char* buf, int len) {
   int read_len = 0;
   while (is_buffer_empty(tsk->rcv_buf) && tsk->state == TCP_ESTABLISHED) {
-    log(DEBUG, "sleep on recv");
     sleep_on(tsk->wait_recv);
     if (tsk->state == TCP_CLOSED) return -1;
   }

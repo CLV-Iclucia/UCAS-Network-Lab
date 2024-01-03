@@ -20,5 +20,8 @@ $(OBJS) : %.o : %.c include/*.h
 $(TARGET): $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $(TARGET) $(LIBS) 
 
+compress:
+	7z a tcp_stack.zip *.c *.h include Makefile
+
 clean:
 	rm -f *.o $(TARGET)

@@ -71,6 +71,6 @@ if __name__ == '__main__':
     h2.cmd('./tcp_stack client 10.0.0.1 10001 2> client_log.txt &')
 
     net.start()
-    time.sleep(40)
+    time.sleep(20)
     # CLI(net)
     net.stop()
