@@ -9,7 +9,7 @@
 
 enum log_level { DEBUG = 0, INFO, WARNING, ERROR };
 
-static enum log_level this_log_level = DEBUG;
+static enum log_level this_log_level = ERROR;
 
 static const char *log_level_str[] = { "DEBUG", "INFO", "WARNING", "ERROR" };
 
