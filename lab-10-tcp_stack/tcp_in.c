@@ -90,7 +90,7 @@ static void ack_data_packet(struct tcp_sock *tsk, struct tcp_cb *cb,
   data_len -= offset;
   if (cb->flags & TCP_FIN) {
     prepare_for_close(tsk);
-    return;
+    return ;
   }
   if (data_len > 0) {
     pthread_mutex_lock(&tsk->rcv_buf->lock);
@@ -176,8 +176,7 @@ static void tcp_handle_ack(struct tcp_sock *tsk, struct tcp_cb *cb,
       tcp_update_window(tsk, cb);
     } else
       log(ERROR, "received unexpected packet, drop it.");
-  } else if (tsk->state == TCP_ESTABLISHED || tsk->state == TCP_FIN_WAIT_1 ||
-             tsk->state == TCP_FIN_WAIT_2) {
+  } else if (tsk->state == TCP_ESTABLISHED || tsk->state == TCP_FIN_WAIT_1) {
     if (less_than_32b(cb->seq_end, tsk->rcv_nxt)) {
       log(DEBUG, "receive outdated packet, send ack.");
       tcp_send_control_packet(tsk, TCP_ACK);
@@ -193,17 +192,19 @@ static void tcp_handle_ack(struct tcp_sock *tsk, struct tcp_cb *cb,
       tsk->snd_una = cb->ack;
       ack_data_packet(tsk, cb, packet);
       ack_ofo_packets(tsk);
-      if (tsk->state == TCP_FIN_WAIT_1 && cb->ack == tsk->rcv_nxt) {
+      if (tsk->state == TCP_FIN_WAIT_1) {
         tcp_set_state(tsk, TCP_FIN_WAIT_2);
-      }
-      if (tsk->state == TCP_FIN_WAIT_2 && cb->ack == tsk->rcv_nxt) {
-        tcp_update_window_safe(tsk, cb);
-        tsk->rcv_nxt = cb->seq_end;
-        wake_up(tsk->wait_send);
       }
     } else {
       pend_ofo_packet(tsk, cb, packet);
     }
+  } else if (tsk->state == TCP_FIN_WAIT_2) {
+    if (is_tcp_seq_valid(tsk, cb)) {
+      tcp_update_window_safe(tsk, cb);
+      tsk->rcv_nxt = cb->seq_end;
+      wake_up(tsk->wait_send);
+    } else
+      log(ERROR, "received packet with invalid seq, drop it.");
   } else if (tsk->state == TCP_LAST_ACK) {
     if (cb->ack == tsk->snd_nxt) {
       tsk->snd_una = cb->ack;
@@ -268,6 +269,7 @@ static void tcp_handle_syn(struct tcp_sock *tsk, struct tcp_cb *cb,
   } else
     log(ERROR, "received unexpected packet, drop it.");
 }
+
 
 static void tcp_handle_fin(struct tcp_sock *tsk, struct tcp_cb *cb,
                            char *packet) {
