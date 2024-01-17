@@ -35,10 +35,8 @@ void tcp_send_packet(struct tcp_sock *tsk, char *packet, int len,
   tcp->checksum = tcp_checksum(ip, tcp);
 
   ip->checksum = ip_checksum(ip);
-  log(DEBUG,
-      "send packet, flags: %s, seq: %d, ack: %d, len: %d, current sending "
-      "window: %d",
-      tcp_flags_str(tcp->flags), seq, ack, tcp_data_len, tsk->snd_wnd);
+  log(DEBUG, "send packet, flags: %s, seq: %d, ack: %d, len: %d",
+      tcp_flags_str(tcp->flags), seq, ack, tcp_data_len);
   if (prep_for_retrans) {
     insert_data_send_buffer(tsk, packet, tcp_data_len);
     tsk->snd_nxt += tcp_data_len;
@@ -71,11 +69,8 @@ void tcp_send_control_packet(struct tcp_sock *tsk, u8 flags) {
   tcp_init_hdr(tcp, tsk->sk_sport, tsk->sk_dport, tsk->snd_nxt, tsk->rcv_nxt,
                flags, tsk->rcv_wnd);
   tcp->checksum = tcp_checksum(ip, tcp);
-  log(DEBUG,
-      "send control packet, flags: %s, seq: %d, ack: %d, rwnd: %d, current "
-      "sending window: %d",
-      tcp_flags_str(flags), tsk->snd_nxt, tsk->rcv_nxt, tsk->rcv_wnd,
-      tsk->snd_wnd);
+  log(DEBUG, "send control packet, flags: %s, seq: %d, ack: %d, rwnd: %d",
+      tcp_flags_str(flags), tsk->snd_nxt, tsk->rcv_nxt, tsk->rcv_wnd);
   if (flags & (TCP_SYN | TCP_FIN)) {
     insert_control_send_buffer(tsk, packet, pkt_size);
     tsk->snd_nxt += 1;

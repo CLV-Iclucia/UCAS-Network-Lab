@@ -43,6 +43,9 @@ struct tcphdr {
 
 #define TCP_DEFAULT_WINDOW 65535
 #define TCP_MAX_RETRANS 3
+#define TCP_MAX_PACAKET_SIZE 1514
+#define TCP_MSS (TCP_MAX_PACAKET_SIZE - ETHER_HDR_SIZE - IP_BASE_HDR_SIZE - TCP_BASE_HDR_SIZE)
+
 
 // control block, representing all the necesary information of a packet
 struct tcp_cb {
@@ -76,7 +79,16 @@ enum tcp_state {
   TCP_TIME_WAIT
 };
 
+enum tcp_cc_state {
+  TCP_CC_CONGESTION_AVOIDANCE,
+  TCP_CC_FAST_RECOVERY,
+  TCP_CC_SLOW_START,
+};
 
+enum tcp_cc_event {
+  TCP_CC_DUPLICATE,
+  TCP_CC_RTO,
+};
 
 static inline struct tcphdr* packet_to_tcp_hdr(char* packet) {
   struct iphdr* ip = packet_to_ip_hdr(packet);
@@ -107,6 +119,5 @@ void tcp_copy_flags_to_str(u8 flags, char buf[]);
 const char* tcp_flags_str(u8 flags);
 void tcp_cb_init(struct iphdr* ip, struct tcphdr* tcp, struct tcp_cb* cb);
 void handle_tcp_packet(char* packet, struct iphdr* ip, struct tcphdr* tcp);
-
 
 #endif

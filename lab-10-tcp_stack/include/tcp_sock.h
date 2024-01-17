@@ -18,6 +18,15 @@ struct sock_addr {
   u16 port;
 } __attribute__((packed));
 
+struct tcp_congestion_controller {
+  pthread_mutex_t lock;
+  enum tcp_cc_state state;
+  u32 ssthresh;
+  u32 cwnd;
+  u32 rp; // recovery point
+  u8 dup_cnt;
+};
+
 // the main structure that manages a connection locally
 struct tcp_sock {
   // sk_ip, sk_sport, sk_sip, sk_dport are the 4-tuple that represents a
@@ -103,11 +112,8 @@ struct tcp_sock {
   // the size of receiving window (advertised by tcp sock itself)
   u16 rcv_wnd;
 
-  // congestion window
-  u32 cwnd;
-
-  // slow start threshold
-  u32 ssthresh;
+  bool no_allowed_to_send;
+  struct tcp_congestion_controller cc;
 };
 
 struct tcp_ofo_packet {
@@ -220,6 +226,9 @@ void tcp_sock_close(struct tcp_sock *tsk);
 
 int tcp_sock_read(struct tcp_sock *tsk, char *buf, int len);
 int tcp_sock_write(struct tcp_sock *tsk, char *buf, int len);
+static inline int inflight(struct tcp_sock *tsk) {
+  return (tsk->snd_nxt - tsk->snd_una) / TCP_MSS - tsk->cc.dup_cnt;
+}
 
 // retrans the first packet of tsk->send_buf
 static inline void retrans_packet(struct tcp_sock* tsk) {
@@ -236,5 +245,16 @@ static inline void retrans_packet(struct tcp_sock* tsk) {
                    TCP_BASE_HDR_SIZE;
   ip_send_packet(packet, packet_len);
   pthread_mutex_unlock(&tsk->send_lock);
+}
+
+void tcp_cc_handle_new_ack(struct tcp_sock* tsk);
+void tcp_cc_handle_dup_ack(struct tcp_sock* tsk);
+void retrans_pending_packet(struct tcp_sock* tsk, struct pending_packet* pp);
+static inline char* move_and_ip_send_packet(char* packet, int packet_len) {
+  char* moved_packet = (char*)malloc(packet_len);
+  assert(moved_packet != NULL);
+  memcpy(moved_packet, packet, packet_len);
+  ip_send_packet(packet, packet_len);
+  return moved_packet;
 }
 #endif

@@ -7,35 +7,8 @@
 #include "tcp.h"
 #include "tcp_sock.h"
 
-#include <reporter.h>
-
 static struct list_head timer_list;
 static pthread_mutex_t timer_lock = PTHREAD_MUTEX_INITIALIZER;
-
-void tcp_cc_handle_rto(struct tcp_sock *tsk) {
-  pthread_mutex_lock(&tsk->cc.lock);
-  switch(tsk->cc.state) {
-    case TCP_CC_SLOW_START:
-      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-      tsk->cc.cwnd = TCP_MSS;
-      tsk->cc.dup_cnt = 0;
-      report(tsk->cc.cwnd);
-      break;
-    case TCP_CC_CONGESTION_AVOIDANCE:
-      tsk->cc.state = TCP_CC_SLOW_START;
-      break;
-    case TCP_CC_FAST_RECOVERY:
-      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-      tsk->cc.cwnd = TCP_MSS;
-      tsk->cc.dup_cnt = 0;
-      tsk->cc.state = TCP_CC_SLOW_START;
-      report(tsk->cc.cwnd);
-      break;
-    default:
-      log(DEBUG, "Unknown cc state");
-  }
-  pthread_mutex_unlock(&tsk->cc.lock);
-}
 
 static void handle_timewait_timer(struct tcp_timer *timer) {
   // decrease the timeout value
@@ -48,6 +21,14 @@ static void handle_timewait_timer(struct tcp_timer *timer) {
     tcp_unhash(tsk);
   }
   list_delete_entry(&timer->list);
+}
+
+static char* move_and_ip_send_packet(char* packet, int packet_len) {
+  char* moved_packet = (char*)malloc(packet_len);
+  assert(moved_packet != NULL);
+  memcpy(moved_packet, packet, packet_len);
+  ip_send_packet(packet, packet_len);
+  return moved_packet;
 }
 
 static void tcp_terminate(struct tcp_sock *tsk) {
@@ -93,9 +74,13 @@ static bool handle_retrans_timeout(struct tcp_sock *tsk) {
   pos->retrans_times++;
   tsk->retrans_timer.timeout = TCP_RETRANS_INTERVAL_INITIAL
                                << pos->retrans_times;
-  tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-  tsk->cc.cwnd = TCP_MSS;
-  retrans_pending_packet(tsk, pos);
+  int packet_len =
+      pos->len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
+  assert(less_than_32b(tsk->snd_una, pos->seq_end));
+  log(DEBUG, "retrans packet, seq: %d, seq_end: %d", pos->seq, pos->seq_end);
+  log(DEBUG, "retrans timeout is now set to %d", tsk->retrans_timer.timeout);
+  // note that we should not call ip_send_packet here because it will free the packet
+  pos->packet = move_and_ip_send_packet(packet, packet_len);
   pthread_mutex_unlock(&tsk->send_lock);
   return false;
 }
@@ -170,15 +155,13 @@ void tcp_try_update_retrans_timer(struct tcp_sock *tsk) {
   }
   log(DEBUG, "try update retrans timer");
   retrans_timer->timeout = TCP_RETRANS_INTERVAL_INITIAL;
-  log(DEBUG, "retrans timeout is reset");
   pthread_mutex_unlock(&timer_lock);
 }
 
 void tcp_reset_retrans_timer(struct tcp_sock *tsk) {
   pthread_mutex_lock(&timer_lock);
   struct tcp_timer *retrans_timer = &tsk->retrans_timer;
-  assert(retrans_timer->enable);
-  assert(retrans_timer->type == 1);
+  assert(retrans_timer->enable && retrans_timer->type == 1);
   log(DEBUG, "reset retrans timer");
   retrans_timer->timeout = TCP_RETRANS_INTERVAL_INITIAL;
   pthread_mutex_unlock(&timer_lock);

@@ -6,6 +6,11 @@
 #include "tcp.h"
 #include "tcp_hash.h"
 #include "tcp_timer.h"
+#include "reporter.h"
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
 // TCP socks should be hashed into table for later lookup: Those which
 // occupy a port (either by *bind* or *connect*) should be hashed into
@@ -63,7 +68,12 @@ struct tcp_sock* alloc_tcp_sock() {
   tsk->wait_recv = alloc_wait_struct("recv");
   tsk->wait_send = alloc_wait_struct("send");
   tsk->retrans_timer.type = 1;
+  tsk->cc.state = TCP_CC_SLOW_START;
+  tsk->cc.cwnd = TCP_MSS;
+  tsk->cc.ssthresh = 0xFFFF;
+  report(tsk->cc.cwnd);
   tsk->snd_nxt = tcp_new_iss();
+  tsk->no_allowed_to_send = false;
   return tsk;
 }
 
@@ -358,9 +368,16 @@ int tcp_sock_read(struct tcp_sock* tsk, char* buf, int len) {
 int tcp_sock_write(struct tcp_sock* tsk, char* buf, int len) {
   int sent_len = 0;
   while (sent_len < len) {
-    while (tsk->snd_wnd == 0 && tsk->state == TCP_ESTABLISHED) {
+    while ((tsk->snd_wnd == 0 || tsk->no_allowed_to_send) && tsk->state == TCP_ESTABLISHED) {
       sleep_on(tsk->wait_send);
       if (tsk->state == TCP_CLOSED) return -1;
+    }
+    int packets_allowed_to_send = max(tsk->snd_wnd / TCP_MSS - inflight(tsk), 0);
+    log(DEBUG, "sending window: %d, inflight: %d, packets allowed to send: %d",
+        tsk->snd_wnd, inflight(tsk), packets_allowed_to_send);
+    if (packets_allowed_to_send == 0) {
+      tsk->no_allowed_to_send = true;
+      continue;
     }
     int send_len = min(tsk->snd_una + tsk->snd_wnd - tsk->snd_nxt, len - sent_len);
     send_len = min(

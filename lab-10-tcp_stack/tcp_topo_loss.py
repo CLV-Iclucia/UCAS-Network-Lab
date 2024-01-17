@@ -67,12 +67,12 @@ if __name__ == '__main__':
         h.cmd('scripts/disable_ip_forward.sh')
         # XXX: If you want to run user-level stack, you should execute
         # disable_[arp,icmp,ip_forward].sh first. 
-    # h1.cmd('./tcp_stack server 10001 2> server_log.txt &')
-    # h2.cmd('./tcp_stack client 10.0.0.1 10001 2> client_log.txt &')
-    h1.cmd('./tcp_stack server 10001 &')
-    h2.cmd('./tcp_stack client 10.0.0.1 10001 &')
+    h1.cmd('./tcp_stack server 10001 2> server_log.txt &')
+    h2.cmd('./tcp_stack client 10.0.0.1 10001 2> client_log.txt &')
+    # h1.cmd('./tcp_stack server 10001 &')
+    # h2.cmd('./tcp_stack client 10.0.0.1 10001 &')
 
     net.start()
-    time.sleep(20)
+    time.sleep(60)
     # CLI(net)
     net.stop()

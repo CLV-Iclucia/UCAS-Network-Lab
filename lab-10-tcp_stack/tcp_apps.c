@@ -3,6 +3,7 @@
 
 #include "log.h"
 #include "tcp_sock.h"
+#include "reporter.h"
 
 // tcp server application, listens to port (specified by arg) and serves only
 // one connection request
@@ -59,6 +60,7 @@ void *tcp_client(void *arg) {
   struct sock_addr *skaddr = arg;
 
   struct tcp_sock *tsk = alloc_tcp_sock();
+  start_report("cwnd.txt");
   log(DEBUG, "try to connect to server (" IP_FMT ":%hu).",
       NET_IP_FMT_STR(skaddr->ip), ntohs(skaddr->port));
   if (tcp_sock_connect(tsk, skaddr) < 0) {

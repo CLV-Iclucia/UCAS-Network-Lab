@@ -2,22 +2,32 @@
 #include <stdlib.h>
 
 #include "log.h"
+#include "reporter.h"
 #include "ring_buffer.h"
 #include "tcp.h"
 #include "tcp_sock.h"
 #include "tcp_timer.h"
+
+#ifndef max
+#define max(x, y) ((x) > (y) ? (x) : (y))
+#endif
+
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
 // update the snd_wnd of tcp_sock
 //
 // if the snd_wnd before updating is zero, notify tcp_sock_send (wait_send)
 static inline void tcp_update_window(struct tcp_sock *tsk, struct tcp_cb *cb) {
   u16 old_snd_wnd = tsk->snd_wnd;
-  tsk->snd_wnd = cb->rwnd;
+  tsk->snd_wnd = min(cb->rwnd, tsk->cc.cwnd);
   if (less_than_32b(tsk->snd_una, cb->ack))
     tsk->snd_una = cb->ack;
-  if (tsk->snd_wnd != old_snd_wnd)
-    tcp_reset_retrans_timer(tsk);
-  if (old_snd_wnd == 0)
+  // if (tsk->snd_wnd > old_snd_wnd)
+  //   tcp_reset_retrans_timer(tsk);
+  if (old_snd_wnd == 0) {
     wake_up(tsk->wait_send);
+  }
 }
 
 // update the snd_wnd safely: cb->ack should be between snd_una and snd_nxt
@@ -27,10 +37,6 @@ static inline void tcp_update_window_safe(struct tcp_sock *tsk,
       less_or_equal_32b(cb->ack, tsk->snd_nxt))
     tcp_update_window(tsk, cb);
 }
-
-#ifndef max
-#define max(x, y) ((x) > (y) ? (x) : (y))
-#endif
 
 // check whether the sequence number of the incoming packet is in the receiving
 // window
@@ -73,25 +79,141 @@ static void prepare_for_close(struct tcp_sock *tsk) {
   wake_up(tsk->wait_accept);
 }
 
-static void ack_data_packet(struct tcp_sock *tsk, struct tcp_cb *cb,
-                            char *packet) {
-  char *data = packet + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
-  log(DEBUG, "ack data packet, seq: %d, ack: %d", cb->seq, cb->ack);
-  int data_len = cb->pl_len;
-  if (less_than_32b(cb->seq, cb->seq_end) &&
-      less_or_equal_32b(cb->seq_end, tsk->rcv_nxt)) {
-    log(DEBUG, "receive outdated packet, send ack.");
-    tcp_send_control_packet(tsk, TCP_ACK);
-    return;
+static void tcp_fast_retransmit(struct tcp_sock *tsk) {
+  tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
+  tsk->cc.cwnd = tsk->cc.ssthresh;
+}
+
+void retrans_pending_packet(struct tcp_sock *tsk, struct pending_packet *pp) {
+  int packet_len =
+      pp->len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
+  assert(less_than_32b(tsk->snd_una, pp->seq_end));
+  log(DEBUG, "retrans packet, seq: %d, seq_end: %d", pp->seq, pp->seq_end);
+  log(DEBUG, "retrans timeout is now set to %d", tsk->retrans_timer.timeout);
+  // note that we should not call ip_send_packet here because it will free the
+  // packet
+  char *packet = pp->packet;
+  pp->packet = move_and_ip_send_packet(packet, packet_len);
+}
+
+void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
+  pthread_mutex_lock(&tsk->cc.lock);
+  tsk->cc.dup_cnt = 0;
+  switch (tsk->cc.state) {
+  case TCP_CC_SLOW_START:
+    if (tsk->cc.cwnd < tsk->cc.ssthresh) {
+      tsk->cc.cwnd <<= 1;
+      report(tsk->cc.cwnd);
+    } else {
+      tsk->cc.state = TCP_CC_CONGESTION_AVOIDANCE;
+    }
+    break;
+  case TCP_CC_CONGESTION_AVOIDANCE:
+    tsk->cc.cwnd += TCP_MSS * TCP_MSS / tsk->cc.cwnd;
+    report(tsk->cc.cwnd);
+    break;
+  case TCP_CC_FAST_RECOVERY:
+    // if is partial ack, retrans the following packet
+    if (tsk->snd_nxt < tsk->cc.rp) {
+      // it is partial ack
+      // retransmit the next packet
+      struct pending_packet *pos =
+          list_entry(tsk->send_buf.next, struct pending_packet, list);
+      retrans_pending_packet(tsk, pos);
+    } else {
+      // retrans the following packet
+      tsk->cc.cwnd = tsk->cc.ssthresh;
+      tsk->cc.state = TCP_CC_CONGESTION_AVOIDANCE;
+      report(tsk->cc.cwnd);
+    }
+    break;
+  default:
+    log(ERROR, "unknown cc state");
   }
+  pthread_mutex_unlock(&tsk->cc.lock);
+}
+
+void tcp_cc_handle_dup_ack(struct tcp_sock *tsk) {
+  pthread_mutex_lock(&tsk->cc.lock);
+  switch (tsk->cc.state) {
+  case TCP_CC_SLOW_START:
+    tsk->cc.dup_cnt++;
+    if (tsk->cc.dup_cnt == 3) {
+      tcp_fast_retransmit(tsk);
+      tsk->cc.rp = tsk->snd_nxt;
+      tsk->cc.state = TCP_CC_FAST_RECOVERY;
+      tsk->cc.dup_cnt = 0;
+    }
+    report(tsk->cc.cwnd);
+    break;
+  case TCP_CC_CONGESTION_AVOIDANCE:
+    tsk->cc.dup_cnt += 1;
+    if (tsk->cc.dup_cnt == 3) {
+      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
+      tsk->cc.cwnd = tsk->cc.ssthresh;
+      tcp_fast_retransmit(tsk);
+      tsk->cc.state = TCP_CC_FAST_RECOVERY;
+    }
+    report(tsk->cc.cwnd);
+    break;
+  case TCP_CC_FAST_RECOVERY:
+    tsk->cc.cwnd += TCP_MSS;
+    report(tsk->cc.cwnd);
+    break;
+  default:
+    log(ERROR, "unknown cc state");
+  }
+  pthread_mutex_unlock(&tsk->cc.lock);
+}
+static void ack_packet(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet) {
+  char *data = packet + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
+  log(DEBUG, "ack data packet, seq %d, ack: %d", cb->seq, cb->ack);
+  int data_len = cb->pl_len;
+  // handle the case of ack in different state
+  switch (tsk->state) {
+  case TCP_SYN_RECV:
+    tsk->snd_una = cb->ack;
+    tsk->rcv_nxt = cb->seq_end;
+    tcp_set_state(tsk, TCP_ESTABLISHED);
+    tcp_hash(tsk);
+    // add to the accept queue of parent socket
+    tcp_sock_accept_enqueue(tsk);
+    wake_up(tsk->parent->wait_accept);
+    break;
+  case TCP_FIN_WAIT_1:
+    tsk->rcv_nxt = cb->seq_end;
+    tcp_set_state(tsk, TCP_FIN_WAIT_2);
+    break;
+  case TCP_SYN_SENT:
+    tsk->rcv_nxt = cb->seq_end;
+    break;
+  case TCP_CLOSING:
+    tcp_set_state(tsk, TCP_TIME_WAIT);
+    tcp_set_timewait_timer(tsk);
+    break;
+  case TCP_LAST_ACK:
+    tcp_set_state(tsk, TCP_CLOSED);
+    break;
+  default:
+    break;
+  }
+  bool old_no_allowed = tsk->no_allowed_to_send;
+  tcp_cc_handle_new_ack(tsk);
   tcp_update_window_safe(tsk, cb);
+  int send_able = tsk->snd_wnd / TCP_MSS - inflight(tsk);
+  int packet_allowed_to_send = max(send_able, 0);
+  if (packet_allowed_to_send > 0 && old_no_allowed) {
+    log(DEBUG, "allowed to send, wake up sending");
+    tsk->no_allowed_to_send = false;
+    wake_up(tsk->wait_send);
+  }
   tcp_try_update_retrans_timer(tsk);
+  if (tsk->snd_una == tsk->snd_nxt) {
+    log(DEBUG, "all acked, unset retrans timer");
+    tcp_unset_retrans_timer(tsk);
+  }
   int offset = tsk->rcv_nxt - cb->seq;
   data_len -= offset;
-  if (cb->flags & TCP_FIN) {
-    prepare_for_close(tsk);
-    return ;
-  }
   if (data_len > 0) {
     pthread_mutex_lock(&tsk->rcv_buf->lock);
     log(DEBUG, "write data to rcv_buf, offset: %d, data_len: %d", offset,
@@ -118,7 +240,7 @@ static void ack_ofo_packets(struct tcp_sock *tsk) {
     if (ofo_packet_iter->cb.seq_end >= tsk->rcv_nxt) {
       log(DEBUG, "ack ofo packet, seq: %d, ack: %d", ofo_packet_iter->cb.seq,
           ofo_packet_iter->cb.ack);
-      ack_data_packet(tsk, &ofo_packet_iter->cb, ofo_packet_iter->packet);
+      ack_packet(tsk, &ofo_packet_iter->cb, ofo_packet_iter->packet);
     }
     struct tcp_ofo_packet *ofo_packet_iter_q = ofo_packet_iter;
     ofo_packet_iter =
@@ -159,73 +281,25 @@ static void tcp_handle_ack(struct tcp_sock *tsk, struct tcp_cb *cb,
                            char *packet) {
   assert(cb->flags & TCP_ACK);
   update_send_buffer(tsk, cb);
-  if (tsk->state == TCP_SYN_RECV) {
-    if (cb->ack == tsk->snd_nxt) {
-      tsk->snd_una = cb->ack;
-      tcp_set_state(tsk, TCP_ESTABLISHED);
-      tcp_hash(tsk);
-      // add to the accept queue of parent socket
-      tcp_sock_accept_enqueue(tsk);
-      wake_up(tsk->parent->wait_accept);
-    } else
-      log(ERROR, "received unexpected packet, drop it.");
-  } else if (tsk->state == TCP_SYN_SENT) {
-    if (cb->ack == tsk->snd_nxt) {
-      tsk->snd_una = cb->ack;
-      tsk->rcv_nxt = cb->seq_end;
-      tcp_update_window(tsk, cb);
-    } else
-      log(ERROR, "received unexpected packet, drop it.");
-  } else if (tsk->state == TCP_ESTABLISHED || tsk->state == TCP_FIN_WAIT_1) {
-    if (less_than_32b(cb->seq_end, tsk->rcv_nxt)) {
-      log(DEBUG, "receive outdated packet, send ack.");
-      tcp_send_control_packet(tsk, TCP_ACK);
-      return;
-    }
-    if (!is_tcp_seq_valid(tsk, cb)) {
-      log(DEBUG, "received packet with invalid seq, drop it.");
-      return;
-    }
-    log(DEBUG, "receive seq: %d, current expected rcv_nxt: %d", cb->seq,
-        tsk->rcv_nxt);
-    if (less_or_equal_32b(cb->seq, tsk->rcv_nxt)) {
-      tsk->snd_una = cb->ack;
-      ack_data_packet(tsk, cb, packet);
-      ack_ofo_packets(tsk);
-      if (tsk->state == TCP_FIN_WAIT_1) {
-        tcp_set_state(tsk, TCP_FIN_WAIT_2);
-      }
-    } else {
-      pend_ofo_packet(tsk, cb, packet);
-    }
-  } else if (tsk->state == TCP_FIN_WAIT_2) {
-    if (is_tcp_seq_valid(tsk, cb)) {
-      tcp_update_window_safe(tsk, cb);
-      tsk->rcv_nxt = cb->seq_end;
-      wake_up(tsk->wait_send);
-    } else
-      log(ERROR, "received packet with invalid seq, drop it.");
-  } else if (tsk->state == TCP_LAST_ACK) {
-    if (cb->ack == tsk->snd_nxt) {
-      tsk->snd_una = cb->ack;
-      tcp_set_state(tsk, TCP_CLOSED);
-    } else
-      log(ERROR, "received unexpected packet, drop it.");
-  } else if (tsk->state == TCP_TIME_WAIT) {
-    if (cb->ack == tsk->snd_nxt) {
-      tsk->snd_una = cb->ack;
-      tcp_set_state(tsk, TCP_CLOSED);
-    } else
-      log(ERROR, "received unexpected packet, drop it.");
-  } else if (tsk->state == TCP_CLOSING) {
-    if (cb->ack == tsk->snd_nxt) {
-      tsk->snd_una = cb->ack;
-      tcp_set_state(tsk, TCP_TIME_WAIT);
-      tcp_set_timewait_timer(tsk);
-    } else
-      log(ERROR, "received unexpected packet, drop it.");
+  if (!is_tcp_seq_valid(tsk, cb)) {
+    log(DEBUG, "received packet with invalid seq, drop it.");
+    return;
+  }
+  log(DEBUG, "receive seq: %d, current expected rcv_nxt: %d", cb->seq,
+      tsk->rcv_nxt);
+  if (less_than_32b(cb->seq, tsk->rcv_nxt) &&
+      less_or_equal_32b(cb->seq_end, tsk->rcv_nxt)) {
+    log(DEBUG, "receive outdated packet, send ack.");
+    tcp_cc_handle_dup_ack(tsk);
+    tcp_send_control_packet(tsk, TCP_ACK);
+    return;
+  }
+  if (less_or_equal_32b(cb->seq, tsk->rcv_nxt)) {
+    tsk->snd_una = cb->ack;
+    ack_packet(tsk, cb, packet);
+    ack_ofo_packets(tsk);
   } else
-    log(ERROR, "received unexpected packet, drop it.");
+    pend_ofo_packet(tsk, cb, packet);
 }
 
 static void tcp_handle_syn(struct tcp_sock *tsk, struct tcp_cb *cb,
@@ -249,17 +323,16 @@ static void tcp_handle_syn(struct tcp_sock *tsk, struct tcp_cb *cb,
     csk->snd_una = csk->iss;
     csk->rcv_wnd = TCP_DEFAULT_WINDOW;
     csk->snd_wnd = cb->rwnd;
+    csk->cc.state = TCP_CC_SLOW_START;
+    csk->cc.cwnd = TCP_MSS;
+    csk->cc.ssthresh = 65535;
+    csk->cc.dup_cnt = 0;
+    report(csk->cc.cwnd);
     tcp_set_state(csk, TCP_SYN_RECV);
     tcp_hash(csk);
     tcp_send_control_packet(csk, TCP_SYN | TCP_ACK);
     list_add_tail(&csk->list, &tsk->listen_queue);
     return;
-  }
-  if (less_than_32b(cb->seq, tsk->rcv_nxt)) {
-    if (tsk->state == TCP_ESTABLISHED) {
-      retrans_packet(tsk);
-    } else
-      log(ERROR, "received unexpected packet, drop it.");
   }
   if (tsk->state == TCP_SYN_SENT) {
     tcp_set_state(tsk, TCP_ESTABLISHED);
@@ -269,7 +342,6 @@ static void tcp_handle_syn(struct tcp_sock *tsk, struct tcp_cb *cb,
   } else
     log(ERROR, "received unexpected packet, drop it.");
 }
-
 
 static void tcp_handle_fin(struct tcp_sock *tsk, struct tcp_cb *cb,
                            char *packet) {
@@ -333,6 +405,7 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet) {
     tcp_sock_close(tsk);
     return;
   }
+
   if (cb->flags & TCP_ACK)
     tcp_handle_ack(tsk, cb, packet);
   if (cb->flags & TCP_SYN)
