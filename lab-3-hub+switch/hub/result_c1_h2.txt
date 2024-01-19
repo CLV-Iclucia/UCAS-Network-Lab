@@ -1,7 +1,0 @@
-------------------------------------------------------------
-Client connecting to 10.0.0.2, TCP port 5001
-TCP window size: 85.3 KByte (default)
-------------------------------------------------------------
-[  1] local 10.0.0.1 port 52636 connected with 10.0.0.2 port 5001 (icwnd/mss/irtt=14/1448/185581)
-[ ID] Interval       Transfer     Bandwidth
-[  1] 0.0000-10.5187 sec  3.38 MBytes  2.69 Mbits/sec
