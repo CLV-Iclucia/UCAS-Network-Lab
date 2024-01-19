@@ -1,0 +1,55 @@
+DEBUG: find the following interfaces:  b1-eth0 b1-eth1 b1-eth2 b1-eth3.
+DEBUG: hello timer expired, now = 652b7286db.
+DEBUG: hello timer expired, now = 652b7288db.
+DEBUG: hello timer expired, now = 652b728adb.
+DEBUG: hello timer expired, now = 652b728cdb.
+DEBUG: hello timer expired, now = 652b728edb.
+DEBUG: hello timer expired, now = 652b7290db.
+DEBUG: hello timer expired, now = 652b7292db.
+DEBUG: hello timer expired, now = 652b7294db.
+DEBUG: hello timer expired, now = 652b7296db.
+DEBUG: hello timer expired, now = 652b7298db.
+DEBUG: hello timer expired, now = 652b729adb.
+DEBUG: hello timer expired, now = 652b729cdb.
+DEBUG: hello timer expired, now = 652b729edb.
+DEBUG: hello timer expired, now = 652b72a0db.
+DEBUG: hello timer expired, now = 652b72a2db.
+DEBUG: hello timer expired, now = 652b72a4db.
+DEBUG: hello timer expired, now = 652b72a6db.
+DEBUG: hello timer expired, now = 652b72a8db.
+DEBUG: hello timer expired, now = 652b72aadb.
+DEBUG: hello timer expired, now = 652b72acdb.
+DEBUG: hello timer expired, now = 652b72aedb.
+DEBUG: hello timer expired, now = 652b72b0db.
+DEBUG: hello timer expired, now = 652b72b2db.
+DEBUG: hello timer expired, now = 652b72b4db.
+DEBUG: hello timer expired, now = 652b72b6db.
+DEBUG: hello timer expired, now = 652b72b8db.
+DEBUG: hello timer expired, now = 652b72badb.
+DEBUG: hello timer expired, now = 652b72bcdb.
+DEBUG: hello timer expired, now = 652b72bedb.
+DEBUG: hello timer expired, now = 652b72c0db.
+DEBUG: hello timer expired, now = 652b72c2db.
+DEBUG: hello timer expired, now = 652b72c4db.
+DEBUG: hello timer expired, now = 652b72c6db.
+DEBUG: hello timer expired, now = 652b72c8db.
+DEBUG: hello timer expired, now = 652b72cadb.
+DEBUG: hello timer expired, now = 652b72ccdb.
+DEBUG: hello timer expired, now = 652b72cedb.
+DEBUG: hello timer expired, now = 652b72d0db.
+DEBUG: hello timer expired, now = 652b72d2db.
+DEBUG: hello timer expired, now = 652b72d4db.
+DEBUG: hello timer expired, now = 652b72d6db.
+DEBUG: hello timer expired, now = 652b72d8db.
+DEBUG: hello timer expired, now = 652b72dadb.
+DEBUG: hello timer expired, now = 652b72dcdb.
+DEBUG: received SIGTERM, terminate this program.
+INFO: this switch is root.
+INFO: port id: 01, role: DESIGNATED.
+INFO: 	designated ->root: 0101, ->switch: 0101, ->port: 01, ->cost: 0.
+INFO: port id: 02, role: DESIGNATED.
+INFO: 	designated ->root: 0101, ->switch: 0101, ->port: 02, ->cost: 0.
+INFO: port id: 03, role: DESIGNATED.
+INFO: 	designated ->root: 0101, ->switch: 0101, ->port: 03, ->cost: 0.
+INFO: port id: 04, role: DESIGNATED.
+INFO: 	designated ->root: 0101, ->switch: 0101, ->port: 04, ->cost: 0.
