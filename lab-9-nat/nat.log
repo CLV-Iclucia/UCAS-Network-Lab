@@ -1,0 +1,48 @@
+[device_internal.c:163] DEBUG: find the following interfaces:  n1-eth1 n1-eth0.
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:174] DEBUG: sweeping arpcache
+[main.c:54] DEBUG: this is n1-eth1
+[main.c:54] DEBUG: this is n1-eth0
+[main.c:57] DEBUG: this is n1-eth0
+[main.c:74] DEBUG: this is n1-eth0, received a packet, proto is 2054
+[arp.c:61] DEBUG: received arp packet from 10.21.0.1
+[arp.c:40] DEBUG: send arp reply to 10.21.0.1 through n1-eth0
+[main.c:54] DEBUG: this is n1-eth1
+[main.c:54] DEBUG: this is n1-eth0
+[main.c:57] DEBUG: this is n1-eth0
+[main.c:74] DEBUG: this is n1-eth0, received a packet, proto is 2048
+[nat.c:249] DEBUG: handle packet from interface n1-eth0
+[nat.c:229] DEBUG: from 10.21.0.1:38764 to 159.226.39.123:8000
+[nat.c:157] DEBUG: handle outgoing packet.
+[nat.c:183] DEBUG: no mapping entry found.
+[nat.c:195] DEBUG: assign port 12345
+[nat.c:101] DEBUG: mapping created with (10.21.0.1, 38764) <--> (159.226.39.43, 12345)
+[arp.c:98] DEBUG: not found mac for 159.226.39.123 in arpcache, pending packet
+[arpcache.c:100] DEBUG: create new pending arp request, iface n1-eth1, ip 159.226.39.123
+[arp.c:18] DEBUG: send arp request to 159.226.39.123
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:194] DEBUG: retransmit arp request to 159.226.39.123
+[arp.c:18] DEBUG: send arp request to 159.226.39.123
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:194] DEBUG: retransmit arp request to 159.226.39.123
+[arp.c:18] DEBUG: send arp request to 159.226.39.123
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:194] DEBUG: retransmit arp request to 159.226.39.123
+[arp.c:18] DEBUG: send arp request to 159.226.39.123
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:194] DEBUG: retransmit arp request to 159.226.39.123
+[arp.c:18] DEBUG: send arp request to 159.226.39.123
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:194] DEBUG: retransmit arp request to 159.226.39.123
+[arp.c:18] DEBUG: send arp request to 159.226.39.123
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:184] DEBUG: arp request retries exceeded, send icmp to 123.39.226.159
+[icmp.c:40] DEBUG: ICMP for other reasons
+[ip_base.c:56] DEBUG: send icmp packet to 10.21.0.1 from 10.21.0.254
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:174] DEBUG: sweeping arpcache
+[arpcache.c:174] DEBUG: sweeping arpcache
