@@ -101,7 +101,7 @@ void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
   tsk->cc.dup_cnt = 0;
   switch (tsk->cc.state) {
   case TCP_CC_SLOW_START:
-    if (tsk->cc.cwnd < tsk->cc.ssthresh) {
+    if (tsk->cc.cwnd <= tsk->cc.ssthresh) {
       tsk->cc.cwnd <<= 1;
       report(tsk->cc.cwnd);
     } else {
@@ -109,7 +109,7 @@ void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
     }
     break;
   case TCP_CC_CONGESTION_AVOIDANCE:
-    tsk->cc.cwnd += TCP_MSS * TCP_MSS / tsk->cc.cwnd;
+    tsk->cc.cwnd += TCP_MSS;
     report(tsk->cc.cwnd);
     break;
   case TCP_CC_FAST_RECOVERY:
@@ -135,22 +135,22 @@ void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
 
 void tcp_cc_handle_dup_ack(struct tcp_sock *tsk) {
   pthread_mutex_lock(&tsk->cc.lock);
+  tsk->cc.dup_cnt++;
   switch (tsk->cc.state) {
   case TCP_CC_SLOW_START:
-    tsk->cc.dup_cnt++;
-    if (tsk->cc.dup_cnt == 3) {
+    if (tsk->cc.dup_cnt >= 3) {
       tcp_fast_retransmit(tsk);
       tsk->cc.rp = tsk->snd_nxt;
       tsk->cc.state = TCP_CC_FAST_RECOVERY;
-      tsk->cc.dup_cnt = 0;
+      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
+      tsk->cc.cwnd = tsk->cc.ssthresh + 3 * TCP_MSS;
     }
     report(tsk->cc.cwnd);
     break;
   case TCP_CC_CONGESTION_AVOIDANCE:
-    tsk->cc.dup_cnt += 1;
-    if (tsk->cc.dup_cnt == 3) {
+    if (tsk->cc.dup_cnt >= 3) {
       tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-      tsk->cc.cwnd = tsk->cc.ssthresh;
+      tsk->cc.cwnd = tsk->cc.ssthresh + 3 * TCP_MSS;
       tcp_fast_retransmit(tsk);
       tsk->cc.state = TCP_CC_FAST_RECOVERY;
     }

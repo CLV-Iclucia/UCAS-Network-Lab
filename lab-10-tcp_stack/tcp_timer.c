@@ -14,20 +14,22 @@ static pthread_mutex_t timer_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void tcp_cc_handle_rto(struct tcp_sock *tsk) {
   pthread_mutex_lock(&tsk->cc.lock);
+  tsk->cc.dup_cnt = 0;
   switch(tsk->cc.state) {
     case TCP_CC_SLOW_START:
       tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
       tsk->cc.cwnd = TCP_MSS;
-      tsk->cc.dup_cnt = 0;
       report(tsk->cc.cwnd);
       break;
     case TCP_CC_CONGESTION_AVOIDANCE:
+      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
+      tsk->cc.cwnd = TCP_MSS;
       tsk->cc.state = TCP_CC_SLOW_START;
+      report(tsk->cc.cwnd);
       break;
     case TCP_CC_FAST_RECOVERY:
       tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
       tsk->cc.cwnd = TCP_MSS;
-      tsk->cc.dup_cnt = 0;
       tsk->cc.state = TCP_CC_SLOW_START;
       report(tsk->cc.cwnd);
       break;

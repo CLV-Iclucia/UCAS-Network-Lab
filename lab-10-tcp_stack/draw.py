@@ -10,7 +10,7 @@ def plot_cwnd(file_path):
             times.append(time)
             cwnd_sizes.append(int(cwnd))
 
-    plt.plot(times, cwnd_sizes, marker='o')
+    plt.plot(times, cwnd_sizes)
     plt.title('CWND Sizes Over Time')
     plt.xlabel('Time')
     plt.ylabel('CWND Size')
