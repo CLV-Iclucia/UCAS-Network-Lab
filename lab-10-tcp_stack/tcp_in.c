@@ -114,14 +114,16 @@ void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
     break;
   case TCP_CC_FAST_RECOVERY:
     // if is partial ack, retrans the following packet
-    if (tsk->snd_nxt < tsk->cc.rp) {
+    if (tsk->snd_una < tsk->cc.rp) {
       // it is partial ack
-      // retransmit the next packet
-      struct pending_packet *pos =
-          list_entry(tsk->send_buf.next, struct pending_packet, list);
-      retrans_pending_packet(tsk, pos);
+      // retrans packet from snd_una to rp
+      struct pending_packet *pos, *q;
+      list_for_each_entry_safe(pos, q, &tsk->send_buf, list) {
+        if (less_or_equal_32b(tsk->snd_una, pos->seq_end) &&
+            less_than_32b(pos->seq_end, tsk->cc.rp))
+          retrans_pending_packet(tsk, pos);
+      }
     } else {
-      // retrans the following packet
       tsk->cc.cwnd = tsk->cc.ssthresh;
       tsk->cc.state = TCP_CC_CONGESTION_AVOIDANCE;
       report(tsk->cc.cwnd);
