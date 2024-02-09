@@ -25,6 +25,8 @@ struct tcp_congestion_controller {
   u32 cwnd;
   u32 rp; // recovery point
   u8 dup_cnt;
+  u8 loss_cnt;
+  u8 retrans_cnt;
 };
 
 // the main structure that manages a connection locally
@@ -247,7 +249,7 @@ static inline void retrans_packet(struct tcp_sock* tsk) {
   pthread_mutex_unlock(&tsk->send_lock);
 }
 
-void tcp_cc_handle_new_ack(struct tcp_sock* tsk);
+void tcp_cc_handle_new_ack(struct tcp_sock* tsk, struct tcp_cb* cb);
 void tcp_cc_handle_dup_ack(struct tcp_sock* tsk);
 void retrans_pending_packet(struct tcp_sock* tsk, struct pending_packet* pp);
 static inline char* move_and_ip_send_packet(char* packet, int packet_len) {

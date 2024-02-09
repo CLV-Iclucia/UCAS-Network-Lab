@@ -20,12 +20,13 @@
 // if the snd_wnd before updating is zero, notify tcp_sock_send (wait_send)
 static inline void tcp_update_window(struct tcp_sock *tsk, struct tcp_cb *cb) {
   u16 old_snd_wnd = tsk->snd_wnd;
+  int old_send_len = tsk->snd_una + tsk->snd_wnd - tsk->snd_nxt;
   tsk->snd_wnd = min(cb->rwnd, tsk->cc.cwnd);
   if (less_than_32b(tsk->snd_una, cb->ack))
     tsk->snd_una = cb->ack;
   // if (tsk->snd_wnd > old_snd_wnd)
   //   tcp_reset_retrans_timer(tsk);
-  if (old_snd_wnd == 0) {
+  if (old_snd_wnd == 0 || (old_send_len <= 0 && tsk->snd_una + tsk->snd_wnd > tsk->snd_nxt)) {
     wake_up(tsk->wait_send);
   }
 }
@@ -79,11 +80,6 @@ static void prepare_for_close(struct tcp_sock *tsk) {
   wake_up(tsk->wait_accept);
 }
 
-static void tcp_fast_retransmit(struct tcp_sock *tsk) {
-  tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-  tsk->cc.cwnd = tsk->cc.ssthresh;
-}
-
 void retrans_pending_packet(struct tcp_sock *tsk, struct pending_packet *pp) {
   int packet_len =
       pp->len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE + TCP_BASE_HDR_SIZE;
@@ -94,9 +90,26 @@ void retrans_pending_packet(struct tcp_sock *tsk, struct pending_packet *pp) {
   // packet
   char *packet = pp->packet;
   pp->packet = move_and_ip_send_packet(packet, packet_len);
+  tsk->cc.retrans_cnt++;
 }
 
-void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
+static void tcp_fast_retransmit(struct tcp_sock *tsk) {
+  tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
+  if (tsk->snd_una >= tsk->cc.rp) {
+	log(DEBUG, "no packet to fast retransmit");
+	return;
+  }
+  pthread_mutex_lock(&tsk->send_lock);
+  struct pending_packet *pos, *q;
+  list_for_each_entry_safe(pos, q, &tsk->send_buf, list) {
+    if (less_than_32b(pos->seq_end, tsk->cc.rp))
+      retrans_pending_packet(tsk, pos);
+    else break;
+  }
+  pthread_mutex_unlock(&tsk->send_lock);
+}
+
+void tcp_cc_handle_new_ack(struct tcp_sock *tsk, struct tcp_cb *cb) {
   pthread_mutex_lock(&tsk->cc.lock);
   tsk->cc.dup_cnt = 0;
   switch (tsk->cc.state) {
@@ -104,30 +117,21 @@ void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
     if (tsk->cc.cwnd <= tsk->cc.ssthresh) {
       tsk->cc.cwnd <<= 1;
       report(tsk->cc.cwnd);
+	  log(DEBUG, "cwnd: %d", tsk->cc.cwnd);
     } else {
       tsk->cc.state = TCP_CC_CONGESTION_AVOIDANCE;
     }
     break;
   case TCP_CC_CONGESTION_AVOIDANCE:
-    tsk->cc.cwnd += TCP_MSS;
+    tsk->cc.cwnd += TCP_MSS * TCP_MSS / tsk->cc.cwnd;
     report(tsk->cc.cwnd);
+	log(DEBUG, "cwnd: %d", tsk->cc.cwnd);
     break;
   case TCP_CC_FAST_RECOVERY:
-    // if is partial ack, retrans the following packet
-    if (tsk->snd_una < tsk->cc.rp) {
-      // it is partial ack
-      // retrans packet from snd_una to rp
-      struct pending_packet *pos, *q;
-      list_for_each_entry_safe(pos, q, &tsk->send_buf, list) {
-        if (less_or_equal_32b(tsk->snd_una, pos->seq_end) &&
-            less_than_32b(pos->seq_end, tsk->cc.rp))
-          retrans_pending_packet(tsk, pos);
-      }
-    } else {
       tsk->cc.cwnd = tsk->cc.ssthresh;
       tsk->cc.state = TCP_CC_CONGESTION_AVOIDANCE;
       report(tsk->cc.cwnd);
-    }
+	  log(DEBUG, "cwnd: %d", tsk->cc.cwnd);
     break;
   default:
     log(ERROR, "unknown cc state");
@@ -138,29 +142,34 @@ void tcp_cc_handle_new_ack(struct tcp_sock *tsk) {
 void tcp_cc_handle_dup_ack(struct tcp_sock *tsk) {
   pthread_mutex_lock(&tsk->cc.lock);
   tsk->cc.dup_cnt++;
+  log(DEBUG, "handle dup ack, current dup_cnt: %d", tsk->cc.dup_cnt);
   switch (tsk->cc.state) {
   case TCP_CC_SLOW_START:
-    if (tsk->cc.dup_cnt >= 3) {
+    if (tsk->cc.dup_cnt == 3) {
+      log(DEBUG, "dup ack == 3, fast retransmit");
+	  tsk->cc.rp = tsk->snd_nxt;
+	  tsk->cc.state = TCP_CC_FAST_RECOVERY;
       tcp_fast_retransmit(tsk);
-      tsk->cc.rp = tsk->snd_nxt;
-      tsk->cc.state = TCP_CC_FAST_RECOVERY;
-      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
       tsk->cc.cwnd = tsk->cc.ssthresh + 3 * TCP_MSS;
     }
     report(tsk->cc.cwnd);
+	log(DEBUG, "cwnd: %d", tsk->cc.cwnd);
     break;
   case TCP_CC_CONGESTION_AVOIDANCE:
-    if (tsk->cc.dup_cnt >= 3) {
-      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-      tsk->cc.cwnd = tsk->cc.ssthresh + 3 * TCP_MSS;
+    if (tsk->cc.dup_cnt == 3) {
+      log(DEBUG, "dup ack == 3, fast retransmit");
+      tsk->cc.rp = tsk->snd_nxt;
       tcp_fast_retransmit(tsk);
       tsk->cc.state = TCP_CC_FAST_RECOVERY;
+	  tsk->cc.cwnd = tsk->cc.ssthresh + 3 * TCP_MSS;
     }
     report(tsk->cc.cwnd);
+	log(DEBUG, "cwnd: %d", tsk->cc.cwnd);
     break;
   case TCP_CC_FAST_RECOVERY:
     tsk->cc.cwnd += TCP_MSS;
     report(tsk->cc.cwnd);
+	log(DEBUG, "cwnd: %d", tsk->cc.cwnd);
     break;
   default:
     log(ERROR, "unknown cc state");
@@ -174,7 +183,6 @@ static void ack_packet(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet) {
   // handle the case of ack in different state
   switch (tsk->state) {
   case TCP_SYN_RECV:
-    tsk->snd_una = cb->ack;
     tsk->rcv_nxt = cb->seq_end;
     tcp_set_state(tsk, TCP_ESTABLISHED);
     tcp_hash(tsk);
@@ -200,7 +208,15 @@ static void ack_packet(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet) {
     break;
   }
   bool old_no_allowed = tsk->no_allowed_to_send;
-  tcp_cc_handle_new_ack(tsk);
+  log(DEBUG, "ack: %d, snd_una: %d", cb->ack, tsk->snd_una);
+  if (cb->ack <= tsk->snd_una) {
+    log(DEBUG, "received duplicate ack, handle it");
+    tcp_cc_handle_dup_ack(tsk);
+  }
+  else {
+    log(DEBUG, "received new ack, handle it");
+	tcp_cc_handle_new_ack(tsk, cb);
+  }
   tcp_update_window_safe(tsk, cb);
   int send_able = tsk->snd_wnd / TCP_MSS - inflight(tsk);
   int packet_allowed_to_send = max(send_able, 0);
@@ -297,11 +313,13 @@ static void tcp_handle_ack(struct tcp_sock *tsk, struct tcp_cb *cb,
     return;
   }
   if (less_or_equal_32b(cb->seq, tsk->rcv_nxt)) {
-    tsk->snd_una = cb->ack;
     ack_packet(tsk, cb, packet);
     ack_ofo_packets(tsk);
-  } else
+  } else {
     pend_ofo_packet(tsk, cb, packet);
+    log(DEBUG, "receive out-of-order packet, send ack.");
+    tcp_send_control_packet(tsk, TCP_ACK);
+  }
 }
 
 static void tcp_handle_syn(struct tcp_sock *tsk, struct tcp_cb *cb,
@@ -329,6 +347,8 @@ static void tcp_handle_syn(struct tcp_sock *tsk, struct tcp_cb *cb,
     csk->cc.cwnd = TCP_MSS;
     csk->cc.ssthresh = 65535;
     csk->cc.dup_cnt = 0;
+	csk->cc.loss_cnt = 0;
+	csk->cc.retrans_cnt = 0;
     report(csk->cc.cwnd);
     tcp_set_state(csk, TCP_SYN_RECV);
     tcp_hash(csk);

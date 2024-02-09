@@ -85,11 +85,6 @@ enum tcp_cc_state {
   TCP_CC_SLOW_START,
 };
 
-enum tcp_cc_event {
-  TCP_CC_DUPLICATE,
-  TCP_CC_RTO,
-};
-
 static inline struct tcphdr* packet_to_tcp_hdr(char* packet) {
   struct iphdr* ip = packet_to_ip_hdr(packet);
   return (struct tcphdr *)((char *)ip + IP_HDR_SIZE(ip));

@@ -15,27 +15,12 @@ static pthread_mutex_t timer_lock = PTHREAD_MUTEX_INITIALIZER;
 void tcp_cc_handle_rto(struct tcp_sock *tsk) {
   pthread_mutex_lock(&tsk->cc.lock);
   tsk->cc.dup_cnt = 0;
-  switch(tsk->cc.state) {
-    case TCP_CC_SLOW_START:
-      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-      tsk->cc.cwnd = TCP_MSS;
-      report(tsk->cc.cwnd);
-      break;
-    case TCP_CC_CONGESTION_AVOIDANCE:
-      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-      tsk->cc.cwnd = TCP_MSS;
-      tsk->cc.state = TCP_CC_SLOW_START;
-      report(tsk->cc.cwnd);
-      break;
-    case TCP_CC_FAST_RECOVERY:
-      tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-      tsk->cc.cwnd = TCP_MSS;
-      tsk->cc.state = TCP_CC_SLOW_START;
-      report(tsk->cc.cwnd);
-      break;
-    default:
-      log(DEBUG, "Unknown cc state");
-  }
+  tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
+  tsk->cc.cwnd = TCP_MSS;
+  // all packets between snd_una and snd_nxt are considered lost
+  tsk->cc.loss_cnt += (tsk->snd_nxt - tsk->snd_una) / TCP_MSS;
+  tsk->cc.state = TCP_CC_SLOW_START;
+  report(tsk->cc.cwnd);
   pthread_mutex_unlock(&tsk->cc.lock);
 }
 
@@ -95,8 +80,7 @@ static bool handle_retrans_timeout(struct tcp_sock *tsk) {
   pos->retrans_times++;
   tsk->retrans_timer.timeout = TCP_RETRANS_INTERVAL_INITIAL
                                << pos->retrans_times;
-  tsk->cc.ssthresh = tsk->cc.cwnd >> 1;
-  tsk->cc.cwnd = TCP_MSS;
+  tcp_cc_handle_rto(tsk);
   retrans_pending_packet(tsk, pos);
   pthread_mutex_unlock(&tsk->send_lock);
   return false;

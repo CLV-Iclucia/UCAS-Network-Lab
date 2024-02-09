@@ -372,7 +372,8 @@ int tcp_sock_write(struct tcp_sock* tsk, char* buf, int len) {
       sleep_on(tsk->wait_send);
       if (tsk->state == TCP_CLOSED) return -1;
     }
-    int packets_allowed_to_send = max(tsk->snd_wnd / TCP_MSS - inflight(tsk), 0);
+    int packets_allowed_to_send = tsk->snd_wnd / TCP_MSS - inflight(tsk);
+    if (packets_allowed_to_send < 0) packets_allowed_to_send = 0;
     log(DEBUG, "sending window: %d, inflight: %d, packets allowed to send: %d",
         tsk->snd_wnd, inflight(tsk), packets_allowed_to_send);
     if (packets_allowed_to_send == 0) {
@@ -380,9 +381,14 @@ int tcp_sock_write(struct tcp_sock* tsk, char* buf, int len) {
       continue;
     }
     int send_len = min(tsk->snd_una + tsk->snd_wnd - tsk->snd_nxt, len - sent_len);
+	while (!send_len && tsk->state == TCP_ESTABLISHED) {
+		sleep_on(tsk->wait_send);
+		if (tsk->state == TCP_CLOSED) return -1;
+		send_len = min(tsk->snd_una + tsk->snd_wnd - tsk->snd_nxt, len - sent_len);
+		if (len == sent_len) return sent_len;
+	}
     send_len = min(
         send_len, 1514 - ETHER_HDR_SIZE - IP_BASE_HDR_SIZE - TCP_BASE_HDR_SIZE);
-    if (!send_len) continue;
     char* packet_buf = malloc(send_len + ETHER_HDR_SIZE + IP_BASE_HDR_SIZE +
                               TCP_BASE_HDR_SIZE);
     char* data =
